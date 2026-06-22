@@ -1,0 +1,13 @@
+{
+  "name": "pi-0x30-config",
+  "version": "0.0.1",
+  "description": "0x36 pi configs",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "prompts": [
+      "./prompts"
+    ]
+  }
+}
