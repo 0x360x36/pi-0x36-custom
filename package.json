@@ -5,9 +5,18 @@
   "keywords": [
     "pi-package"
   ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
   "pi": {
     "prompts": [
       "./prompts"
+    ],
+    "extensions": [
+      "./extensions"
     ]
   }
 }
