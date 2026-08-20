@@ -2,6 +2,7 @@
   "name": "pi-0x36-config",
   "version": "0.0.1",
   "description": "0x36 pi custom config",
+  "type": "module",
   "keywords": [
     "pi-package"
   ],
