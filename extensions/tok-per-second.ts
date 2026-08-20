@@ -11,12 +11,11 @@
  *
  * Gradient (real-time, ponytail: linear RGB):
  *   0 tok/s   → rojo   #ff0000
- *   100 tok/s → verde  #00ff00
- *   200 tok/s → azul   #0000ff (capped; >200 stays blue)
- *   0–100 interpolates rojo→verde, 100–200 verde→azul.
- *   Midpoint 50 is olive #808000 / 150 is teal #008080 — vivid yellow/cyan
- *   variant would need a 4-stop scale (red→yellow→green→cyan→blue); add when
- *   dull middle bothers.
+ *   50 tok/s  → verde  #00ff00
+ *   100 tok/s → cyan   #00ffff (capped; >100 stays cyan)
+ *   0–50 interpolates rojo→verde, 50–100 verde→cyan.
+ *   Previo: 0→100 rojo→verde y 100→200 verde→azul; se ajusta verde a 50
+ *   y destino a cyan para respuesta más rápida.
  */
 
 import type {
@@ -27,7 +26,8 @@ import type {
 const CHARS_PER_TOKEN = 4; // 4 chars ≈ 1 token for mixed code/text
 const MIN_ELAPSED_MS = 500; // no rate until a real window exists
 const THROTTLE_MS = 100; // repaint footer at most 10x/sec
-const GRADIENT_BLUE_AT = 200; // tok/s value that reaches pure blue (capped)
+const GRADIENT_GREEN_AT = 50; // tok/s que alcanza verde puro
+const GRADIENT_CYAN_AT = 100; // tok/s que alcanza cyan puro (capped; >100 stays cyan)
 
 export function estimateTokPerSec(chars: number, elapsedMs: number): number {
 	if (elapsedMs <= 0) return 0;
@@ -49,19 +49,19 @@ export function tokensFromChars(chars: number): number {
 	return chars / CHARS_PER_TOKEN;
 }
 
-// ponytail: linear RGB lerp, O(1). Upgrade to HSL / 4-stop (red→yellow→green→cyan→blue) for vivid mids if needed.
+// ponytail: linear RGB lerp, O(1). Escala 0→50 rojo→verde, 50→100 verde→cyan. Subir GRADIENT_CYAN_AT si quieres transición más lenta.
 export function tokGradientRgb(tps: number): {
 	r: number;
 	g: number;
 	b: number;
 } {
 	const v = Math.max(0, tps);
-	if (v <= 100) {
-		const f = v / 100;
+	if (v <= GRADIENT_GREEN_AT) {
+		const f = v / GRADIENT_GREEN_AT;
 		return { r: Math.round(255 * (1 - f)), g: Math.round(255 * f), b: 0 };
 	}
-	const f = Math.min(1, (v - 100) / (GRADIENT_BLUE_AT - 100));
-	return { r: 0, g: Math.round(255 * (1 - f)), b: Math.round(255 * f) };
+	const f = Math.min(1, (v - GRADIENT_GREEN_AT) / (GRADIENT_CYAN_AT - GRADIENT_GREEN_AT));
+	return { r: 0, g: 255, b: Math.round(255 * f) };
 }
 
 export function tokGradientHex(tps: number): string {
