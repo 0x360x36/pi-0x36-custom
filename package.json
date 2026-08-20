@@ -10,16 +10,5 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*"
-  },
-  "pi": {
-    "prompts": [
-      "./prompts"
-    ],
-    "extensions": [
-      "./extensions"
-    ],
-    "themes": [
-      "./themes/arasaka.json"
-    ]
   }
 }
