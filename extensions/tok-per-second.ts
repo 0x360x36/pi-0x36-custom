@@ -125,6 +125,7 @@ export default function (pi: ExtensionAPI) {
 	let chars = 0;
 	let startTime = 0;
 	let lastPaint = 0;
+	let lastDeltaAt = 0; // último delta recibido — el tiempo muerto (tok/s 0) no cuenta para el avg
 	let cumTokens = 0;
 	let cumTimeMs = 0;
 	let maxTokPerSec = 0;
@@ -362,7 +363,8 @@ export default function (pi: ExtensionAPI) {
 						cumTokens,
 						cumTimeMs,
 						streaming ? tokensFromChars(chars) : 0,
-						streaming ? performance.now() - startTime : 0,
+						// solo tiempo con generación activa: si el modelo está parado (tok/s 0) no baja el avg
+						streaming ? lastDeltaAt - startTime : 0,
 					);
 					const tokLine =
 						`${theme.fg("dim", "tok/s ")}${gradientFg(live.toFixed(1), live)}` +
@@ -390,6 +392,7 @@ export default function (pi: ExtensionAPI) {
 		chars = 0;
 		startTime = 0;
 		lastPaint = 0;
+		lastDeltaAt = 0;
 		installFooter(ctx);
 		requestRender();
 	});
@@ -399,6 +402,7 @@ export default function (pi: ExtensionAPI) {
 		chars = 0;
 		startTime = performance.now();
 		lastPaint = 0;
+		lastDeltaAt = startTime;
 		requestRender();
 	});
 
@@ -415,6 +419,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		chars += ev.delta.length;
 		const now = performance.now();
+		lastDeltaAt = now;
 		if (now - startTime < MIN_ELAPSED_MS || now - lastPaint < THROTTLE_MS) return;
 		lastPaint = now;
 		const tokPerSec = estimateTokPerSec(chars, now - startTime);
@@ -425,7 +430,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("turn_end", () => {
 		streaming = false;
 		cumTokens += tokensFromChars(chars);
-		cumTimeMs += performance.now() - startTime;
+		// misma ventana activa que el avg en vivo: el idle final (tok/s 0) no se acumula
+		cumTimeMs += lastDeltaAt - startTime;
 		requestRender();
 	});
 
