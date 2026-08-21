@@ -12,6 +12,8 @@
  *  50 tok/s   → verde  #00ff00
  * 100 tok/s   → cyan   #00ffff (capped; >100 stays cyan)
  * 0–50 rojo→verde, 50–100 verde→cyan (ponytail: linear RGB lerp O(1))
+ *
+ * Rama en pwd delegada a ./lib/git.ts (branchSegment + poller).
  */
 
 import type {
@@ -19,6 +21,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { branchSegment, startGitPoller, type GitState } from "./lib/git.ts";
 
 // ponytail: helpers inline para no depender de pi-tui en tests (strip ANSI + truncate simple, O(n))
 export function stripAnsi(s: string): string {
@@ -133,6 +136,19 @@ export default function (pi: ExtensionAPI) {
 	// refs vivas para el footer custom — se setean en session_start
 	let liveCtx: ExtensionContext | null = null;
 	let tuiRef: { requestRender: () => void } | null = null;
+	let gitState: GitState = {};
+	let stopGitPoller: (() => void) | null = null;
+
+	const ensureDirtyPoller = () => {
+		if (stopGitPoller) return;
+		stopGitPoller = startGitPoller(
+			() => liveCtx?.cwd,
+			(next) => {
+				gitState = next;
+				requestRender();
+			},
+		);
+	};
 
 	const requestRender = () => tuiRef?.requestRender();
 
@@ -154,16 +170,18 @@ export default function (pi: ExtensionAPI) {
 
 					// --- línea 1: pwd (+branch +sessionName) ---
 					const home = process.env.HOME || process.env.USERPROFILE;
-					let pwd = formatCwdForFooter(liveCtx!.cwd, home);
+					// path y session en dim; la rama controla su propio color
+					// (verde limpia, ● amarillo=dirty, ● rojo=ahead) sin lavarse con dim
+					let pwd = theme.fg("dim", formatCwdForFooter(liveCtx!.cwd, home));
 					const branch = footerData.getGitBranch();
-					if (branch) pwd = `${pwd} (${branch})`;
-					const sessionName = liveCtx!.sessionManager.getSessionName();
-					if (sessionName) pwd = `${pwd} • ${sessionName}`;
-					const pwdLine = truncateToWidth(
-						theme.fg("dim", pwd),
-						width,
-						theme.fg("dim", "..."),
+					pwd += branchSegment(branch, gitState, (text, color) =>
+						color === "white"
+							? `\x1b[38;2;255;255;255m${text}\x1b[39m`
+							: theme.fg(color, text),
 					);
+					const sessionName = liveCtx!.sessionManager.getSessionName();
+					if (sessionName) pwd += theme.fg("dim", ` • ${sessionName}`);
+					const pwdLine = truncateToWidth(pwd, width, theme.fg("dim", "..."));
 
 					// --- línea 2: stats izquierda + modelo derecha (copia de FooterComponent) ---
 					const usageTotals = {
@@ -394,6 +412,7 @@ export default function (pi: ExtensionAPI) {
 		lastPaint = 0;
 		lastDeltaAt = 0;
 		installFooter(ctx);
+		ensureDirtyPoller();
 		requestRender();
 	});
 
@@ -437,4 +456,13 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("model_select", () => requestRender());
 	pi.on("thinking_level_select", () => requestRender());
+
+	// sin esto, el setInterval sobrevive al /reload y el viejo liveCtx queda
+	// stale → assertActive lanza dentro del timer y tumba el proceso.
+	pi.on("session_shutdown", () => {
+		if (stopGitPoller) {
+			stopGitPoller();
+			stopGitPoller = null;
+		}
+	});
 }

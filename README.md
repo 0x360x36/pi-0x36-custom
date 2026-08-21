@@ -6,7 +6,7 @@
 
 | Path | Type | What it does |
 |---|---|---|
-| `extensions/tok-per-second.ts` | extension | Replaces the footer with a live `tok/s` indicator: **live / max / avg** tokens per second under the model name, colored by a red → green → cyan gradient (`0` → `50` → `100+` tok/s). Replicates the native footer (pwd + git branch + session, usage stats, context %, model) and adds the tok/s line right-aligned below it. |
+| `extensions/tok-per-second.ts` | extension | Replaces the footer with a live `tok/s` indicator: **live / max / avg** tokens per second under the model name, colored by a red → green → cyan gradient (`0` → `50` → `100+` tok/s). Replicates the native footer (pwd + git branch + session, usage stats, context %, model) and adds the tok/s line right-aligned below it. The pwd line shows `[±branch]` in real time — `[` `]` **blancos**, `±` **verde**, `+` verde = staged, `●` amarillo = unstaged, `?` amarillo = untracked, `✖` rojo = conflicto, `↑` rojo = ahead, `↓` rojo = behind (ej. `[±main ●2 ?1 ↑1]`; conteo >1 muestra número; polled cada 2s). |
 | `extensions/exit-alias.ts` | extension | Adds a `/exit` command as an alias for quitting pi cleanly. |
 | `prompts/commit_en.md` | prompt template | Commits pending changes on the main branch following Conventional Commits, in **English**. |
 | `prompts/commit_es.md` | prompt template | Same, but commits in **Spanish**. |
@@ -14,6 +14,7 @@
 | `prompts/threat.md` | prompt template | Threat-intel search for a CVE: targeted industries, attacked countries (ISO-3166), and exploit/PoC references with source URLs. |
 | `themes/arasaka.json` | theme | Cyberpunk red/gold/black theme ("Arasaka"). |
 | `test/tokps.test.ts` | test | Assert-based self-check for the tok/s math (`node test/tokps.test.ts`). |
+| `test/branch-status.test.ts` | test | Assert-based self-check for the footer branch segment (`node test/branch-status.test.ts`). |
 
 ## Requirements
 
@@ -49,6 +50,7 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 | What | How |
 |---|---|
 | tok/s footer | enabled automatically once the extension loads; you'll see `tok/s <live> max <peak> avg <session>` under the model name |
+| branch status | `[±main]` en el footer: `[` `]` blancos, `±` verde = clean/synced, `+` verde = staged, `●` amarillo = unstaged, `?` amarillo = untracked, `✖` rojo = conflicto, `↑`/`↓` rojo = ahead/behind (ej. `[±main ●2 ?1 ↑1]`, `?2` = 2 untracked) |
 | quit | `/exit` |
 | themed UI | `/theme arasaka` |
 | conventional commit | `/commit_en` or `/commit_es` |
@@ -58,7 +60,8 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 ## Development
 
 ```bash
-node test/tokps.test.ts   # self-check for the tok/s calculations
+node test/tokps.test.ts          # self-check for the tok/s calculations
+node test/branch-status.test.ts  # self-check for the footer branch segment
 ```
 
 ## Layout
