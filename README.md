@@ -6,7 +6,10 @@
 
 | Path | Type | What it does |
 |---|---|---|
-| `extensions/tok-per-second.ts` | extension | Replaces the footer with a live `tok/s` indicator: **live / max / avg** tokens per second under the model name, colored by a red → green → cyan gradient (`0` → `50` → `100+` tok/s). Replicates the native footer (pwd + git branch + session, usage stats, context %, model) and adds the tok/s line right-aligned below it. The pwd line shows `[±branch]` in real time — `[` `]` **blancos**, `±` **verde**, `+` verde = staged, `●` amarillo = unstaged, `?` amarillo = untracked, `✖` rojo = conflicto, `↑` rojo = ahead, `↓` rojo = behind (ej. `[±main ●2 ?1 ↑1]`; conteo >1 muestra número; polled cada 2s). |
+| `extensions/tok-per-second.ts` | extension | Replaces the footer with a live `tok/s` indicator: **live / max / avg** tokens per second under the model name, colored by a red → green → cyan gradient (`0` → `50` → `100+` tok/s). Replicates the native footer (pwd + git branch + session, usage stats, context %, model) and adds the tok/s line right-aligned below it. La línea pwd muestra `[±branch]` en tiempo real + **tamaño del directorio a la derecha del estado de git** `📦 1.23 GB` con **gradiente blanco→rojo 0–5 GB** (`0 GB #ffffff` → `5 GB #ff0000`, poll cada 15s via `du -sb`→`-sk`→fallback). |
+| `extensions/dir-size.ts` | extension | Tamaño del directorio donde se abrió pi en **GB/MB/KB** (auto escala 1024, gradiente **blanco→rojo 0–5 GB**). Provee comandos `/du [ruta] [--gb\|--mb\|--kb\|--bytes\|-h]` y aliases `/dir-size`, `/tamaño` (`ej: /du --gigas`, `/du ./dist --mb`) + tool `dir_size` para “¿cuánto pesa?”. El **render visual** está integrado en el footer de `tok-per-second` a la derecha del estado de git `📦 1.23 GB` (poll cada 15s `du -sb`→`-sk`→fallback). |
+| `extensions/lib/dir-size.ts` | lib | Helpers puros `formatBytes`/`parseDuArgs`/`getDirSize`/`formatCwdShort`/`sizeGradientRgb` para `dir-size` (testable sin TUI, gradiente blanco→rojo). |
+| `extensions/lib/git.ts` | lib | Helpers puros `parsePorcelain`/`branchSegment` y poller git para `tok-per-second`. |
 | `extensions/exit-alias.ts` | extension | Adds a `/exit` command as an alias for quitting pi cleanly. |
 | `prompts/commit_en.md` | prompt template | Commits pending changes on the main branch following Conventional Commits, in **English**. |
 | `prompts/commit_es.md` | prompt template | Same, but commits in **Spanish**. |
@@ -15,6 +18,7 @@
 | `themes/arasaka.json` | theme | Cyberpunk red/gold/black theme ("Arasaka"). |
 | `test/tokps.test.ts` | test | Assert-based self-check for the tok/s math (`node test/tokps.test.ts`). |
 | `test/branch-status.test.ts` | test | Assert-based self-check for the footer branch segment (`node test/branch-status.test.ts`). |
+| `test/dir-size.test.ts` | test | Assert-based self-check para `formatBytes`/`parseDuArgs`/`getDirSize` (`node test/dir-size.test.ts`). |
 
 ## Requirements
 
@@ -51,6 +55,9 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 |---|---|
 | tok/s footer | enabled automatically once the extension loads; you'll see `tok/s <live> max <peak> avg <session>` under the model name |
 | branch status | `[±main]` en el footer: `[` `]` blancos, `±` verde = clean/synced, `+` verde = staged, `●` amarillo = unstaged, `?` amarillo = untracked, `✖` rojo = conflicto, `↑`/`↓` rojo = ahead/behind (ej. `[±main ●2 ?1 ↑1]`, `?2` = 2 untracked) |
+| tamaño directorio | en footer, **a la derecha del estado de git**: `~/proyecto [±main] 📦 1.23 GB` — gradiente **blanco→rojo 0–5 GB**, poll cada 15s |
+| tamaño puntual | `/du [ruta] [--gb\|--mb\|--kb\|--bytes\|-h]` — alias `/dir-size`, `/tamaño` (ej: `/du --gigas`, `/du ./dist --mb`, `/du --unit=gb`) |
+| tamaño (LLM) | tool `dir_size` — pregunta “¿cuánto pesa este proyecto?” |
 | quit | `/exit` |
 | themed UI | `/theme arasaka` |
 | conventional commit | `/commit_en` or `/commit_es` |
@@ -62,6 +69,7 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 ```bash
 node test/tokps.test.ts          # self-check for the tok/s calculations
 node test/branch-status.test.ts  # self-check for the footer branch segment
+node test/dir-size.test.ts       # self-check for dir-size (GB/MB/KB)
 ```
 
 ## Layout
