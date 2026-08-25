@@ -22,6 +22,12 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { branchSegment, startGitPoller, type GitState } from "./lib/git.ts";
+import {
+	DU_POLL_MS,
+	formatBytes,
+	getDirSize,
+	sizeGradientFg,
+} from "./lib/dir-size.ts";
 
 // ponytail: helpers inline para no depender de pi-tui en tests (strip ANSI + truncate simple, O(n))
 export function stripAnsi(s: string): string {
@@ -138,6 +144,9 @@ export default function (pi: ExtensionAPI) {
 	let tuiRef: { requestRender: () => void } | null = null;
 	let gitState: GitState = {};
 	let stopGitPoller: (() => void) | null = null;
+	let dirBytes: number | null = null;
+	let dirPollTimer: ReturnType<typeof setInterval> | null = null;
+	let dirInFlight = false;
 
 	const ensureDirtyPoller = () => {
 		if (stopGitPoller) return;
@@ -148,6 +157,28 @@ export default function (pi: ExtensionAPI) {
 				requestRender();
 			},
 		);
+	};
+
+	const refreshDirSize = async () => {
+		if (!liveCtx || dirInFlight) return;
+		dirInFlight = true;
+		try {
+			dirBytes = await getDirSize(liveCtx.cwd);
+			requestRender();
+		} catch {}
+		dirInFlight = false;
+	};
+
+	const ensureDirPoller = () => {
+		if (dirPollTimer) return;
+		refreshDirSize();
+		dirPollTimer = setInterval(refreshDirSize, DU_POLL_MS);
+	};
+
+	const stopDirPoller = () => {
+		if (dirPollTimer) clearInterval(dirPollTimer);
+		dirPollTimer = null;
+		dirBytes = null;
 	};
 
 	const requestRender = () => tuiRef?.requestRender();
@@ -179,6 +210,11 @@ export default function (pi: ExtensionAPI) {
 							? `\x1b[38;2;255;255;255m${text}\x1b[39m`
 							: theme.fg(color, text),
 					);
+					// tamaño del directorio a la derecha del estado de git — blanco→rojo 0–5 GB
+					if (dirBytes !== null) {
+						const human = formatBytes(dirBytes);
+						pwd += ` ${sizeGradientFg(`📦 ${human}`, dirBytes)}`;
+					}
 					const sessionName = liveCtx!.sessionManager.getSessionName();
 					if (sessionName) pwd += theme.fg("dim", ` • ${sessionName}`);
 					const pwdLine = truncateToWidth(pwd, width, theme.fg("dim", "..."));
@@ -413,6 +449,7 @@ export default function (pi: ExtensionAPI) {
 		lastDeltaAt = 0;
 		installFooter(ctx);
 		ensureDirtyPoller();
+		ensureDirPoller();
 		requestRender();
 	});
 
@@ -464,5 +501,6 @@ export default function (pi: ExtensionAPI) {
 			stopGitPoller();
 			stopGitPoller = null;
 		}
+		stopDirPoller();
 	});
 }
