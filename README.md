@@ -6,9 +6,11 @@
 
 | Path | Type | What it does |
 |---|---|---|
-| `extensions/tok-per-second.ts` | extension | Replaces the footer with a live `tok/s` indicator: **live / max / avg** tokens per second under the model name, colored by a red → green → cyan gradient (`0` → `50` → `100+` tok/s). Replicates the native footer (pwd + git branch + session, usage stats, context %, model) and adds the tok/s line right-aligned below it. La línea pwd muestra `[±branch]` en tiempo real + **tamaño del directorio a la derecha del estado de git** `📦 1.23 GB` con **gradiente blanco→rojo 0–5 GB** (`0 GB #ffffff` → `5 GB #ff0000`, poll cada 15s via `du -sb`→`-sk`→fallback). |
+| `extensions/tok-per-second.ts` | extension | Replaces the footer with a live `tok/s` indicator: **live / max / avg** tokens per second under the model name, colored by a red → green → cyan gradient (`0` → `50` → `100+` tok/s). Replicates the native footer (pwd + git branch + session, usage stats, context %, model) and adds the tok/s line right-aligned below it. La línea pwd muestra `[±branch]` en tiempo real + **tamaño del directorio a la derecha del estado de git** `📦 1.23 GB` con **gradiente blanco→rojo 0–5 GB** (`0 GB #ffffff` → `5 GB #ff0000`, poll cada 15s via `du -sb`→`-sk`→fallback). La **IP pública** `🌐 191.113.48.133` va en la línea de tok/s, a la izquierda y bajo la info de consumo (poll cada 5 min via `api.ipify.org` → `icanhazip.com`). |
 | `extensions/dir-size.ts` | extension | Tamaño del directorio donde se abrió pi en **GB/MB/KB** (auto escala 1024, gradiente **blanco→rojo 0–5 GB**). Provee comandos `/du [ruta] [--gb\|--mb\|--kb\|--bytes\|-h]` y aliases `/dir-size`, `/tamaño` (`ej: /du --gigas`, `/du ./dist --mb`) + tool `dir_size` para “¿cuánto pesa?”. El **render visual** está integrado en el footer de `tok-per-second` a la derecha del estado de git `📦 1.23 GB` (poll cada 15s `du -sb`→`-sk`→fallback). |
 | `extensions/lib/dir-size.ts` | lib | Helpers puros `formatBytes`/`parseDuArgs`/`getDirSize`/`formatCwdShort`/`sizeGradientRgb` para `dir-size` (testable sin TUI, gradiente blanco→rojo). |
+| `extensions/external-ip.ts` | extension | **IP pública del equipo**: comando `/ip` (consulta bajo demanda y notifica). El valor vivo se pinta en el footer de `tok-per-second`, en la línea de tok/s a la izquierda (bajo la info de consumo), como `🌐 1.2.3.4` (poll cada 5 min). |
+| `extensions/lib/external-ip.ts` | lib | Helpers `parseIp`/`fetchExternalIp` para `external-ip`: stdlib `fetch` + `isIP`, timeout 5s, fallback `api.ipify.org`→`icanhazip.com`, fetch inyectable para tests sin red. |
 | `extensions/lib/git.ts` | lib | Helpers puros `parsePorcelain`/`branchSegment` y poller git para `tok-per-second`. |
 | `extensions/exit-alias.ts` | extension | Adds a `/exit` command as an alias for quitting pi cleanly. |
 | `extensions/telegram-notify.ts` | extension | Envía un mensaje por un **bot de Telegram** cuando el agente termina de responder (evento `agent_settled`, ya sin reintentos/compactaciones pendientes): icono según el resultado (`✅` ok, `⚠️` abortado, `❌` error), proyecto, modelo, hora y la última respuesta (truncada a 3500 chars). Comando `/telegram [status] \| set <bot_token> [chat_id] \| test \| on \| off` — `set` sin chat_id lo autodetecta vía `getUpdates`. Config (gana la última): `~/.pi/agent/telegram-notify.json` (0600), `.pi/telegram-notify.json`, `.env` en la **raíz del paquete** (0600, se relee en cada uso; ahí escriben `set`/`on`/`off`) y el entorno real `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_NOTIFY=0\|1`. |
@@ -22,6 +24,7 @@
 | `test/branch-status.test.ts` | test | Assert-based self-check for the footer branch segment (`node test/branch-status.test.ts`). |
 | `test/telegram.test.ts` | test | Self-check de las notificaciones Telegram: helpers, precedencia de config, `sendMessage`/`getUpdates` con fetch falso y wiring de `/telegram` + `agent_settled` (`node test/telegram.test.ts`). |
 | `test/dir-size.test.ts` | test | Assert-based self-check para `formatBytes`/`parseDuArgs`/`getDirSize` (`node test/dir-size.test.ts`). |
+| `test/external-ip.test.ts` | test | Self-check de `parseIp`/`fetchExternalIp` con fetch falso (fallback y errores, sin red real) (`node test/external-ip.test.ts`). |
 
 ## Requirements
 
@@ -61,6 +64,7 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 | tamaño directorio | en footer, **a la derecha del estado de git**: `~/proyecto [±main] 📦 1.23 GB` — gradiente **blanco→rojo 0–5 GB**, poll cada 15s |
 | tamaño puntual | `/du [ruta] [--gb\|--mb\|--kb\|--bytes\|-h]` — alias `/dir-size`, `/tamaño` (ej: `/du --gigas`, `/du ./dist --mb`, `/du --unit=gb`) |
 | tamaño (LLM) | tool `dir_size` — pregunta “¿cuánto pesa este proyecto?” |
+| IP pública | `🌐 1.2.3.4` en la línea de tok/s, a la izquierda y bajo la info de consumo (refresco cada 5 min) — `/ip` consulta al momento |
 | quit | `/exit` |
 | aviso Telegram | `/telegram set <bot_token> [chat_id]` (crea el bot con @BotFather, escríbele `/start`; sin chat_id se autodetecta con `getUpdates`) → cada vez que el agente termina llega un mensaje. `/telegram test` prueba, `/telegram on\|off` silencia, `/telegram` muestra estado. `set`/`on`/`off` guardan en el `.env` de la raíz del paquete |
 | themed UI | `/theme arasaka` |
@@ -74,6 +78,7 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 node test/tokps.test.ts          # self-check for the tok/s calculations
 node test/branch-status.test.ts  # self-check for the footer branch segment
 node test/dir-size.test.ts       # self-check for dir-size (GB/MB/KB)
+node test/external-ip.test.ts    # self-check for external-ip (fetch falso, sin red)
 node test/telegram.test.ts       # self-check for telegram-notify (no hace red real)
 ```
 

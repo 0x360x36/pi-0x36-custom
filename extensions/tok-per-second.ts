@@ -5,7 +5,8 @@
  * tercera línea izquierda, ordenada alfabéticamente. Ahora usa
  * ctx.ui.setFooter() para replicar el footer nativo (pwd + stats + modelo)
  * y añadir una tercera línea alineada a la derecha, justo bajo el nombre
- * del modelo seleccionado — tok/s live, max y avg con gradiente.
+ * del modelo seleccionado — tok/s live, max y avg con gradiente. La IP
+ * pública (`🌐`) va a la izquierda de esa línea, bajo la info de consumo.
  *
  * Estimación chars/4 y gradiente:
  *   0 tok/s   → rojo   #ff0000
@@ -28,6 +29,7 @@ import {
 	getDirSize,
 	sizeGradientFg,
 } from "./lib/dir-size.ts";
+import { fetchExternalIp, IP_POLL_MS } from "./lib/external-ip.ts";
 
 // ponytail: helpers inline para no depender de pi-tui en tests (strip ANSI + truncate simple, O(n))
 export function stripAnsi(s: string): string {
@@ -147,6 +149,9 @@ export default function (pi: ExtensionAPI) {
 	let dirBytes: number | null = null;
 	let dirPollTimer: ReturnType<typeof setInterval> | null = null;
 	let dirInFlight = false;
+	let externalIp: string | null = null;
+	let ipPollTimer: ReturnType<typeof setInterval> | null = null;
+	let ipInFlight = false;
 
 	const ensureDirtyPoller = () => {
 		if (stopGitPoller) return;
@@ -179,6 +184,28 @@ export default function (pi: ExtensionAPI) {
 		if (dirPollTimer) clearInterval(dirPollTimer);
 		dirPollTimer = null;
 		dirBytes = null;
+	};
+
+	const refreshExternalIp = async () => {
+		if (!liveCtx || ipInFlight) return;
+		ipInFlight = true;
+		try {
+			externalIp = await fetchExternalIp();
+			requestRender();
+		} catch {}
+		ipInFlight = false;
+	};
+
+	const ensureIpPoller = () => {
+		if (ipPollTimer) return;
+		refreshExternalIp();
+		ipPollTimer = setInterval(refreshExternalIp, IP_POLL_MS);
+	};
+
+	const stopIpPoller = () => {
+		if (ipPollTimer) clearInterval(ipPollTimer);
+		ipPollTimer = null;
+		externalIp = null;
 	};
 
 	const requestRender = () => tuiRef?.requestRender();
@@ -425,14 +452,20 @@ export default function (pi: ExtensionAPI) {
 						`${theme.fg("dim", "  max ")}${gradientFg(maxTokPerSec.toFixed(1), maxTokPerSec)}` +
 						`${theme.fg("dim", "  avg ")}${gradientFg(avg.toFixed(1), avg)}`;
 					const tokLineWidth = visibleWidth(tokLine);
-					const tokPad = " ".repeat(Math.max(0, width - tokLineWidth));
-					const tokLineRight = truncateToWidth(
-						tokPad + tokLine,
-						width,
-						theme.fg("dim", "..."),
-					);
+					// línea 3: 🌐 IP a la izquierda (bajo el consumo), tok/s a la derecha.
+					// Si no caben juntas, gana tok/s.
+					const ipSeg = externalIp ? theme.fg("dim", `🌐 ${externalIp}`) : "";
+					const ipWidth = visibleWidth(ipSeg);
+					const line3 =
+						ipSeg && ipWidth + 2 + tokLineWidth <= width
+							? ipSeg + " ".repeat(width - ipWidth - tokLineWidth) + tokLine
+							: truncateToWidth(
+									" ".repeat(Math.max(0, width - tokLineWidth)) + tokLine,
+									width,
+									theme.fg("dim", "..."),
+								);
 
-					return [pwdLine, statsLineColored, tokLineRight];
+					return [pwdLine, statsLineColored, line3];
 				},
 			};
 		});
@@ -450,6 +483,7 @@ export default function (pi: ExtensionAPI) {
 		installFooter(ctx);
 		ensureDirtyPoller();
 		ensureDirPoller();
+		ensureIpPoller();
 		requestRender();
 	});
 
@@ -502,5 +536,6 @@ export default function (pi: ExtensionAPI) {
 			stopGitPoller = null;
 		}
 		stopDirPoller();
+		stopIpPoller();
 	});
 }
