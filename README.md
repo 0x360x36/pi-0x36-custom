@@ -15,6 +15,8 @@
 | `extensions/exit-alias.ts` | extension | Adds a `/exit` command as an alias for quitting pi cleanly. |
 | `extensions/telegram-notify.ts` | extension | Envía un mensaje por un **bot de Telegram** cuando el agente termina de responder (evento `agent_settled`, ya sin reintentos/compactaciones pendientes): icono según el resultado (`✅` ok, `⚠️` abortado, `❌` error), proyecto, modelo, hora y la última respuesta (truncada a 3500 chars). Comando `/telegram [status] \| set <bot_token> [chat_id] \| test \| on \| off` — `set` sin chat_id lo autodetecta vía `getUpdates`. Config (gana la última): `~/.pi/agent/telegram-notify.json` (0600), `.pi/telegram-notify.json`, `.env` en la **raíz del paquete** (0600, se relee en cada uso; ahí escriben `set`/`on`/`off`) y el entorno real `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_NOTIFY=0\|1`. |
 | `extensions/lib/telegram.ts` | lib | Helpers puros y de API para `telegram-notify`: `buildNotifyText`/`truncate` (límite 4096 de Telegram), `assistantText`, `mergeConfig`/`parseConfig`/`parseEnvConfig`/`readConfigFiles`/`writeConfig` y `.env` vía stdlib (`readEnvFile`/`writeEnvFile`/`parseEnv`), `sendTelegram`/`detectChatId` (fetch inyectable, timeout 10s, sin dependencias). |
+| `extensions/retry-no-stop-reason.ts` | extension | Si el modelo cierra el turno **sin una razón de término válida** (`stopReason` ausente, `null`, `""` o `"pending"`) o **trunca la respuesta** (`"length"`, el aviso “Response was truncated before completion.” de pi), omite la respuesta incompleta con `context_edit` y reintenta la misma consulta: el siguiente request reenvía el contexto anterior. Máximo **3 reintentos por corrida** (luego avisa y deja terminar). No actúa si hubo tool calls: esos ya fuerzan otro turno. |
+| `extensions/lib/retry-no-stop-reason.ts` | lib | Helper puro `isMissingStopReason` (razones terminales completas de pi: `stop`, `toolUse`, `error`, `aborted`, `deferred`; `length` y las desconocidas cuentan como reintentables) y `MAX_RETRIES`. |
 | `prompts/commit_en.md` | prompt template | Commits pending changes on the main branch following Conventional Commits, in **English**. |
 | `prompts/commit_es.md` | prompt template | Same, but commits in **Spanish**. |
 | `prompts/expoc.md` | prompt template | Builds an exploit / PoC for a given CVE: recon via web search, root-cause analysis from patch diffs, primitive mapping, and minimal trigger payload. |
@@ -25,6 +27,7 @@
 | `test/telegram.test.ts` | test | Self-check de las notificaciones Telegram: helpers, precedencia de config, `sendMessage`/`getUpdates` con fetch falso y wiring de `/telegram` + `agent_settled` (`node test/telegram.test.ts`). |
 | `test/dir-size.test.ts` | test | Assert-based self-check para `formatBytes`/`parseDuArgs`/`getDirSize` (`node test/dir-size.test.ts`). |
 | `test/external-ip.test.ts` | test | Self-check de `parseIp`/`fetchExternalIp` con fetch falso (fallback y errores, sin red real) (`node test/external-ip.test.ts`). |
+| `test/retry-no-stop-reason.test.ts` | test | Self-check de `isMissingStopReason` y del wiring `turn_end`: reintento sin razón y con respuesta truncada, `context_edit`, límite de 3 y reset por `before_agent_start` (`node test/retry-no-stop-reason.test.ts`). |
 
 ## Requirements
 
@@ -66,6 +69,7 @@ Verify with `pi list`, then restart pi (or start a new session) for extensions t
 | tamaño (LLM) | tool `dir_size` — pregunta “¿cuánto pesa este proyecto?” |
 | IP pública | `🌐 1.2.3.4` en la línea de tok/s, a la izquierda y bajo la info de consumo (refresco cada 5 min) — `/ip` consulta al momento |
 | quit | `/exit` |
+| reintento sin razón | automático: si el turno acaba sin `stopReason` válido o la respuesta se trunca (`length`), se omite esa respuesta y se repite la consulta (máx. 3 veces por corrida) |
 | aviso Telegram | `/telegram set <bot_token> [chat_id]` (crea el bot con @BotFather, escríbele `/start`; sin chat_id se autodetecta con `getUpdates`) → cada vez que el agente termina llega un mensaje. `/telegram test` prueba, `/telegram on\|off` silencia, `/telegram` muestra estado. `set`/`on`/`off` guardan en el `.env` de la raíz del paquete |
 | themed UI | `/theme arasaka` |
 | conventional commit | `/commit_en` or `/commit_es` |
@@ -79,6 +83,7 @@ node test/tokps.test.ts          # self-check for the tok/s calculations
 node test/branch-status.test.ts  # self-check for the footer branch segment
 node test/dir-size.test.ts       # self-check for dir-size (GB/MB/KB)
 node test/external-ip.test.ts    # self-check for external-ip (fetch falso, sin red)
+node test/retry-no-stop-reason.test.ts  # self-check for retry-no-stop-reason
 node test/telegram.test.ts       # self-check for telegram-notify (no hace red real)
 ```
 
